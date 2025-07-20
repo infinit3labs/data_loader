@@ -3,13 +3,20 @@ Basic tests for the data loader functionality.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+from data_loader.config.databricks_config import DatabricksConfig
 from data_loader.config.table_config import (
     DataLoaderConfig, TableConfig, LoadingStrategy, EXAMPLE_CONFIG
 )
 from data_loader.strategies.base_strategy import BaseLoadingStrategy
 from data_loader.strategies.append_strategy import AppendStrategy
 from data_loader.strategies.scd2_strategy import SCD2Strategy
+
+
+@pytest.fixture(autouse=True)
+def disable_spark(monkeypatch):
+    """Replace Spark session with a mock to avoid initializing PySpark."""
+    monkeypatch.setattr(DatabricksConfig, "spark", property(lambda self: Mock()))
 
 
 class TestTableConfig:

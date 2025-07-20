@@ -2,6 +2,10 @@
 
 A comprehensive data loading module for Databricks that provides parallel file processing with multiple loading strategies, file tracking, and robust error handling.
 
+New users should start with the [Quickstart guide](docs/quickstart.md) which
+explains installation using **Poetry** and demonstrates the configuration
+workflow using a small demo.
+
 ## Features
 
 - **File Monitoring**: Automatically discovers and processes new files from configured locations
@@ -40,19 +44,28 @@ data_loader/
 
 ## Installation
 
-1. Install the package:
+1. Install dependencies with **Poetry**:
 ```bash
-pip install -e .
+poetry install
 ```
 
-2. Install dependencies:
+2. (Optional) Activate the virtual environment created by Poetry:
 ```bash
-pip install -r requirements.txt
+poetry shell
 ```
 
 ## Configuration
 
 The data loader uses JSON configuration files to define tables, loading strategies, and processing options.
+
+You can load a configuration file programmatically using
+`load_config_from_file`:
+
+```python
+from data_loader.config import load_config_from_file
+
+config = load_config_from_file("path/to/config.json")
+```
 
 ### Example Configuration
 

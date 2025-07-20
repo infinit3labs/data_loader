@@ -7,6 +7,13 @@ Defines table schemas, loading strategies, and processing rules.
 from enum import Enum
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
+from pathlib import Path
+import json
+
+try:
+    import yaml
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None
 
 
 class LoadingStrategy(str, Enum):
@@ -120,3 +127,16 @@ EXAMPLE_CONFIG = {
         }
     ]
 }
+
+
+def load_config_from_file(path: str) -> DataLoaderConfig:
+    """Load a :class:`DataLoaderConfig` from a JSON or YAML file."""
+    file_path = Path(path)
+    with open(file_path, "r", encoding="utf-8") as fh:
+        if file_path.suffix.lower() in {".yml", ".yaml"}:
+            if yaml is None:
+                raise ImportError("pyyaml is required to load YAML configuration files")
+            data = yaml.safe_load(fh)
+        else:
+            data = json.load(fh)
+    return DataLoaderConfig(**data)

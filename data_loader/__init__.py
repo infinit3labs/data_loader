@@ -13,12 +13,20 @@ __author__ = "Infinit3Labs"
 
 # Import only non-Spark dependent modules by default
 # Spark-dependent modules should be imported on-demand
-from .config.table_config import DataLoaderConfig, TableConfig, LoadingStrategy
+from .config.table_config import (
+    DataLoaderConfig,
+    TableConfig,
+    LoadingStrategy,
+    EXAMPLE_CONFIG,
+    load_config_from_file,
+)
 
 __all__ = [
     "DataLoaderConfig",
     "TableConfig", 
     "LoadingStrategy",
+    "EXAMPLE_CONFIG",
+    "load_config_from_file",
 ]
 
 # Provide easy access to main components when PySpark is available
