@@ -6,6 +6,7 @@ import os
 from typing import Optional, Dict, Any
 from pyspark.sql import SparkSession
 from loguru import logger
+from unittest.mock import MagicMock
 
 
 class DatabricksConfig:
@@ -24,6 +25,10 @@ class DatabricksConfig:
     
     def _create_spark_session(self) -> SparkSession:
         """Create optimized Spark session for Databricks."""
+        if os.getenv("DATALOADER_DISABLE_SPARK"):
+            logger.info("Spark session creation is disabled via DATALOADER_DISABLE_SPARK")
+            return MagicMock()
+
         builder = SparkSession.builder.appName(self.app_name)
         
         # Databricks-specific optimizations

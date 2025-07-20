@@ -40,14 +40,14 @@ data_loader/
 
 ## Installation
 
-1. Install the package:
+1. Install the project using Poetry:
 ```bash
-pip install -e .
+poetry install
 ```
 
-2. Install dependencies:
+2. Activate the virtual environment:
 ```bash
-pip install -r requirements.txt
+poetry shell
 ```
 
 ## Configuration
@@ -153,16 +153,18 @@ python -m data_loader.main create-example-config --output my_config.json
 
 ### Databricks Job Setup
 
-1. **Upload the package** to Databricks workspace or DBFS
+1. **Upload the package** built with Poetry to Databricks workspace or DBFS.
 2. **Create a new job** with the following configuration:
    - **Cluster**: Use a cluster with Databricks Runtime 11.0+ and Delta Lake support
    - **Task Type**: Python script
-   - **Script path**: Path to `main.py` in your uploaded package
-   - **Parameters**: `["run", "--config", "/path/to/config.json"]`
+   - **Script path**: Path to `data_loader/databricks_job.py` in the package
+   - **Parameters**: Add widgets or environment variables for `config_path`, `tables`, etc.
 
 3. **Set up file trigger** (if using file-based triggers):
    - Configure the job to trigger on file arrival in your raw data location
    - Use Databricks Auto Loader for streaming ingestion scenarios
+
+See [docs/databricks_job.md](docs/databricks_job.md) for detailed instructions.
 
 ### Programmatic Usage
 
