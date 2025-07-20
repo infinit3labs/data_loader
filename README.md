@@ -1,6 +1,6 @@
 # Databricks Data Loader
 
-A comprehensive data loading module for Databricks that provides parallel file processing with multiple loading strategies, file tracking, and robust error handling.
+A comprehensive data loading module for Databricks that provides parallel file processing with multiple loading strategies, file tracking, and robust error handling. **Now with enhanced cluster mode for optimized Databricks operations.**
 
 ## Features
 
@@ -16,6 +16,37 @@ A comprehensive data loading module for Databricks that provides parallel file p
 - **Error Handling**: Robust error handling with configurable retry logic
 - **Monitoring**: Comprehensive logging and metrics collection
 - **Optimization**: Automatic table optimization and vacuum operations
+- **🆕 Cluster Mode**: Enhanced Databricks cluster integration with:
+  - Automatic environment detection and optimization
+  - Resource monitoring and management
+  - Unity Catalog support
+  - Job dependency management
+  - Cluster-aware performance tuning
+
+## Quick Start
+
+### Standard Mode
+
+```bash
+# Install the package
+pip install -e .
+
+# Run with configuration file
+python -m data_loader.main run --config config.json
+```
+
+### 🆕 Cluster Mode (Recommended for Databricks)
+
+```bash
+# Run with cluster-specific optimizations
+python -m data_loader.main run-cluster --config config.json
+
+# Run with Unity Catalog
+python -m data_loader.main run-cluster --config config.json --unity-catalog
+
+# Check cluster status
+python -m data_loader.main cluster-status --config config.json
+```
 
 ## Architecture
 
@@ -28,6 +59,11 @@ data_loader/
 │   ├── file_tracker.py     # File processing status tracking
 │   ├── processor.py        # Main orchestrator
 │   └── parallel_executor.py # Parallel processing framework
+├── cluster/                # 🆕 Cluster mode components
+│   ├── cluster_config.py   # Environment detection and configuration
+│   ├── cluster_processor.py # Cluster-optimized processor
+│   ├── resource_manager.py # Resource monitoring and optimization
+│   └── job_orchestrator.py # Dependency and workflow management
 ├── strategies/             # Loading strategy implementations
 │   ├── base_strategy.py    # Base strategy interface
 │   ├── scd2_strategy.py    # SCD2 implementation
@@ -123,7 +159,7 @@ The data loader uses JSON configuration files to define tables, loading strategi
 
 ### Command Line Interface
 
-#### Run Data Loading
+#### Standard Data Loading
 ```bash
 # Run with configuration file
 python -m data_loader.main run --config config.json
@@ -141,6 +177,24 @@ python -m data_loader.main run --config config.json --dry-run
 python -m data_loader.main run --config config.json --optimize --vacuum
 ```
 
+#### 🆕 Cluster Mode (Enhanced for Databricks)
+```bash
+# Run with cluster optimizations (recommended)
+python -m data_loader.main run-cluster --config config.json
+
+# Run with Unity Catalog support
+python -m data_loader.main run-cluster --config config.json --unity-catalog
+
+# Run with resource monitoring
+python -m data_loader.main run-cluster --config config.json --monitoring
+
+# Dry run with cluster status
+python -m data_loader.main run-cluster --config config.json --dry-run
+
+# Check cluster configuration and health
+python -m data_loader.main cluster-status --config config.json
+```
+
 #### Check Processing Status
 ```bash
 python -m data_loader.main status --config config.json
@@ -153,6 +207,7 @@ python -m data_loader.main create-example-config --output my_config.json
 
 ### Databricks Job Setup
 
+#### Standard Mode
 1. **Upload the package** to Databricks workspace or DBFS
 2. **Create a new job** with the following configuration:
    - **Cluster**: Use a cluster with Databricks Runtime 11.0+ and Delta Lake support
@@ -160,12 +215,48 @@ python -m data_loader.main create-example-config --output my_config.json
    - **Script path**: Path to `main.py` in your uploaded package
    - **Parameters**: `["run", "--config", "/path/to/config.json"]`
 
+#### 🆕 Cluster Mode (Recommended)
+1. **Upload the package** to Databricks workspace or DBFS
+2. **Create a new job** with the following configuration:
+   - **Cluster**: Use a cluster with Databricks Runtime 11.0+ and Delta Lake support
+   - **Task Type**: Python script
+   - **Script path**: Path to `main.py` in your uploaded package
+   - **Parameters**: `["run-cluster", "--config", "/path/to/config.json", "--unity-catalog"]`
+
 3. **Set up file trigger** (if using file-based triggers):
    - Configure the job to trigger on file arrival in your raw data location
    - Use Databricks Auto Loader for streaming ingestion scenarios
 
+#### Enhanced Job Configuration for Cluster Mode
+```json
+{
+  "job_clusters": [{
+    "job_cluster_key": "data-loader-cluster",
+    "new_cluster": {
+      "spark_version": "11.3.x-scala2.12",
+      "node_type_id": "i3.xlarge",
+      "num_workers": 4,
+      "spark_conf": {
+        "spark.databricks.delta.optimizeWrite.enabled": "true",
+        "spark.databricks.delta.autoCompact.enabled": "true"
+      }
+    }
+  }],
+  "tasks": [{
+    "task_key": "data-loader",
+    "job_cluster_key": "data-loader-cluster",
+    "python_wheel_task": {
+      "package_name": "databricks_data_loader",
+      "entry_point": "main",
+      "parameters": ["run-cluster", "--config", "/mnt/config/data_loader.json"]
+    }
+  }]
+}
+```
+
 ### Programmatic Usage
 
+#### Standard Mode
 ```python
 from data_loader.config.table_config import DataLoaderConfig
 from data_loader.core.processor import DataProcessor
@@ -185,6 +276,38 @@ table_result = processor.process_table(table_config)
 
 # Check status
 status = processor.get_processing_status()
+```
+
+#### 🆕 Cluster Mode (Enhanced)
+```python
+from data_loader.config.table_config import DataLoaderConfig
+from data_loader.cluster import ClusterConfig, ClusterDataProcessor, DatabricksEnvironment
+
+# Load base configuration
+base_config = DataLoaderConfig(**config_dict)
+
+# Detect Databricks environment and create cluster configuration
+environment = DatabricksEnvironment.detect_environment()
+cluster_config = ClusterConfig.from_base_config(
+    base_config=base_config,
+    environment=environment,
+    enable_cluster_optimizations=True,
+    use_unity_catalog=True
+)
+
+# Initialize cluster processor
+processor = ClusterDataProcessor(cluster_config)
+
+# Validate cluster configuration
+validation = processor.validate_cluster_configuration()
+if not validation['valid']:
+    raise ValueError(f"Configuration invalid: {validation['errors']}")
+
+# Process with cluster optimizations
+results = processor.process_all_tables()
+
+# Get comprehensive cluster status
+cluster_status = processor.get_cluster_status()
 ```
 
 ## Loading Strategies
@@ -214,6 +337,66 @@ The append strategy simply adds new data to the target table without any dedupli
 - Automatic audit column addition (`_load_timestamp`, `_source_file`, `_batch_id`)
 - Optional deduplication
 - Late-arriving data handling
+
+## 🆕 Cluster Mode Features
+
+### Environment Detection
+Automatically detects and optimizes for Databricks environments:
+- **Cluster Type**: Single User, Shared, or No Isolation Shared
+- **Resource Allocation**: Worker count, cores, memory configuration
+- **Runtime Features**: Unity Catalog availability, Delta Lake optimization
+- **Optimal Parallelism**: Calculates ideal parallel job count based on cluster size
+
+### Resource Management
+Real-time monitoring and optimization:
+```python
+# Monitor cluster resources
+resources = processor.resource_manager.get_cluster_resources()
+health = processor.resource_manager.get_health_status()
+
+# Get optimization recommendations
+recommendations = processor.resource_manager.get_optimization_recommendations()
+```
+
+### Unity Catalog Integration
+Seamless integration with Unity Catalog:
+```python
+# Enable Unity Catalog support
+cluster_config = ClusterConfig.from_base_config(
+    base_config=base_config,
+    use_unity_catalog=True,
+    default_catalog="production"
+)
+
+# Tables automatically use: catalog.schema.table format
+```
+
+### Job Dependencies and Orchestration
+Manage complex workflow dependencies:
+```python
+cluster_config = ClusterConfig(
+    base_config=base_config,
+    enable_job_dependencies=True,
+    upstream_dependencies=[
+        "job:bronze-pipeline-job-id",
+        "table:bronze.raw_events", 
+        "file:/mnt/config/ready.flag"
+    ],
+    downstream_notifications=[
+        "webhook:https://hooks.slack.com/...",
+        "job:silver-transformation-job-id"
+    ]
+)
+```
+
+### Cluster-Aware Optimizations
+Automatic Spark configuration based on cluster characteristics:
+- **Delta Lake optimizations**: Auto-compaction, optimized writes
+- **Adaptive query execution**: Dynamic partition coalescing, skew join handling  
+- **Memory management**: Optimal memory allocation and garbage collection
+- **Shuffle optimization**: Adaptive shuffle partitions based on data size
+
+For detailed cluster mode documentation, see [CLUSTER_MODE.md](CLUSTER_MODE.md).
 
 ## File Tracking
 
