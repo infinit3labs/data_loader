@@ -2,7 +2,7 @@
 name = "databricks-data-loader"
 version = "0.1.0"
 description = "A parallel data loading module for Databricks with file monitoring and multiple loading strategies"
-authors = ["Infinit3Labs <info@example.com>"]
+authors = ["Infinit3Labs <contact@infinit3labs.com>"]
 readme = "README.md"
 license = "MIT"
 
