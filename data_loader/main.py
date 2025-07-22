@@ -473,8 +473,16 @@ def create_example_config(
 
 def load_configuration(config_file: Optional[str] = None,
                       config_json: Optional[str] = None) -> DataLoaderConfig:
-    """Load configuration from YAML file, environment, and overrides."""
+    """
+    Load configuration from a YAML file, environment, and overrides.
 
+    Args:
+        config_file (Optional[str]): Path to the YAML configuration file. If not provided, the example configuration is used.
+        config_json (Optional[str]): Configuration as a JSON string. Overrides the configuration file if provided.
+
+    Returns:
+        DataLoaderConfig: The loaded configuration object.
+    """
     if config_json:
         data = yaml.safe_load(config_json)
         return DataLoaderConfig(**data)
