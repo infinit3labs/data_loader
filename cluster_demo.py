@@ -5,7 +5,6 @@ Demonstration of the new Databricks cluster mode functionality.
 This script shows how to use the cluster mode for enhanced Databricks operations.
 """
 
-import json
 from data_loader.config.table_config import DataLoaderConfig
 from data_loader.cluster import ClusterConfig, ClusterDataProcessor, DatabricksEnvironment, ClusterMode
 
@@ -166,16 +165,16 @@ def demonstrate_cluster_mode():
     
     print("✓ New CLI commands available:")
     print("  # Run with cluster optimizations")
-    print("  python -m data_loader.main run-cluster --config config.json")
+    print("  python -m data_loader.main run-cluster --config config.yaml")
     print()
     print("  # Run with Unity Catalog")
-    print("  python -m data_loader.main run-cluster --config config.json --unity-catalog")
+    print("  python -m data_loader.main run-cluster --config config.yaml --unity-catalog")
     print()
     print("  # Check cluster status")
-    print("  python -m data_loader.main cluster-status --config config.json")
+    print("  python -m data_loader.main cluster-status --config config.yaml")
     print()
     print("  # Dry run with cluster info")
-    print("  python -m data_loader.main run-cluster --config config.json --dry-run")
+    print("  python -m data_loader.main run-cluster --config config.yaml --dry-run")
     
     # 8. Validation
     print("\n8. CONFIGURATION VALIDATION")

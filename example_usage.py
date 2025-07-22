@@ -9,7 +9,7 @@ This script shows how to:
 4. Monitor progress
 """
 
-import json
+import yaml
 from pathlib import Path
 from data_loader.config.table_config import DataLoaderConfig
 from data_loader.utils.logger import setup_logging
@@ -169,9 +169,9 @@ def demonstrate_data_loading():
             print(f"  Partition columns: {table_config.partition_columns}")
     
     # Save configuration for reference
-    config_file = "/tmp/example_config.json"
+    config_file = "/tmp/example_config.yaml"
     with open(config_file, 'w') as f:
-        json.dump(config_dict, f, indent=2)
+        yaml.safe_dump(config_dict, f, sort_keys=False)
     print(f"\n✓ Example configuration saved to: {config_file}")
     
     print("\n=== Next Steps ===")

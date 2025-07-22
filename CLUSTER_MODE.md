@@ -33,33 +33,33 @@ data_loader/cluster/
 
 ```bash
 # Run with cluster optimizations (auto-detected configuration)
-python -m data_loader.main run-cluster --config config.json
+python -m data_loader.main run-cluster --config config.yaml
 
 # Run with Unity Catalog enabled
-python -m data_loader.main run-cluster --config config.json --unity-catalog
+python -m data_loader.main run-cluster --config config.yaml --unity-catalog
 
 # Dry run to see cluster configuration
-python -m data_loader.main run-cluster --config config.json --dry-run
+python -m data_loader.main run-cluster --config config.yaml --dry-run
 ```
 
 #### Advanced Options
 
 ```bash
 # Disable cluster optimizations
-python -m data_loader.main run-cluster --config config.json --no-cluster-optimizations
+python -m data_loader.main run-cluster --config config.yaml --no-cluster-optimizations
 
 # Enable monitoring with optimization
-python -m data_loader.main run-cluster --config config.json --optimize --monitoring
+python -m data_loader.main run-cluster --config config.yaml --optimize --monitoring
 
 # Run specific tables only
-python -m data_loader.main run-cluster --config config.json --tables "customers,orders"
+python -m data_loader.main run-cluster --config config.yaml --tables "customers,orders"
 ```
 
 #### Cluster Status
 
 ```bash
 # Check cluster status and configuration
-python -m data_loader.main cluster-status --config config.json
+python -m data_loader.main cluster-status --config config.yaml
 
 # Get status with default configuration
 python -m data_loader.main cluster-status
@@ -288,7 +288,7 @@ cluster_config.downstream_notifications = [
 
 ```bash
 # Get comprehensive cluster status
-python -m data_loader.main cluster-status --config config.json
+python -m data_loader.main cluster-status --config config.yaml
 ```
 
 ### 2. Resource Monitoring

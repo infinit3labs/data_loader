@@ -7,13 +7,18 @@ configuration loading, and orchestration of the data loading process.
 
 import sys
 import json
+import yaml
 import argparse
 from typing import Optional, Dict, Any
 from pathlib import Path
 import typer
 from loguru import logger
 
-from data_loader.config.table_config import DataLoaderConfig, EXAMPLE_CONFIG
+from data_loader.config.table_config import (
+    DataLoaderConfig,
+    EXAMPLE_CONFIG,
+    load_runtime_config,
+)
 from data_loader.utils.logger import setup_logging, DataLoaderLogger
 from data_loader.cluster import ClusterConfig, ClusterDataProcessor, DatabricksEnvironment
 
@@ -446,7 +451,7 @@ def status(
 @app.command()
 def create_example_config(
     output_file: str = typer.Option(
-        "data_loader_config.json",
+        "data_loader_config.yaml",
         "--output",
         "-o",
         help="Output file path for example configuration"
@@ -456,7 +461,7 @@ def create_example_config(
     
     try:
         with open(output_file, 'w') as f:
-            json.dump(EXAMPLE_CONFIG, f, indent=2, default=str)
+            yaml.safe_dump(EXAMPLE_CONFIG, f, sort_keys=False)
         
         print(f"Example configuration created: {output_file}")
         print("Edit this file to match your environment and table requirements.")
@@ -466,31 +471,19 @@ def create_example_config(
         raise typer.Exit(1)
 
 
-def load_configuration(config_file: Optional[str] = None, 
+def load_configuration(config_file: Optional[str] = None,
                       config_json: Optional[str] = None) -> DataLoaderConfig:
-    """
-    Load configuration from file or JSON string.
-    
-    Args:
-        config_file: Path to configuration file
-        config_json: Configuration as JSON string
-        
-    Returns:
-        Loaded configuration
-    """
+    """Load configuration from YAML file, environment, and overrides."""
+
     if config_json:
-        config_dict = json.loads(config_json)
-    elif config_file:
-        if not Path(config_file).exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_file}")
-        
-        with open(config_file, 'r') as f:
-            config_dict = json.load(f)
-    else:
-        logger.warning("No configuration provided, using example configuration")
-        config_dict = EXAMPLE_CONFIG
-    
-    return DataLoaderConfig(**config_dict)
+        data = yaml.safe_load(config_json)
+        return DataLoaderConfig(**data)
+
+    if not config_file:
+        logger.warning("No configuration file provided, using example configuration")
+        return DataLoaderConfig(**EXAMPLE_CONFIG)
+
+    return load_runtime_config(config_file)
 
 
 def print_cluster_processing_summary(results: Dict[str, Any], cluster_config, environment):

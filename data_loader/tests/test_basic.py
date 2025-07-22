@@ -3,7 +3,7 @@ Basic tests for the data loader functionality.
 """
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from data_loader.config.databricks_config import DatabricksConfig
 from data_loader.config.table_config import (
     DataLoaderConfig, TableConfig, LoadingStrategy, EXAMPLE_CONFIG

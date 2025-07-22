@@ -7,8 +7,8 @@ Defines table schemas, loading strategies, and processing rules.
 from enum import Enum
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-import json
 
 try:
     import yaml
@@ -92,6 +92,28 @@ class DataLoaderConfig(BaseModel):
         return [table for table in self.tables if table.loading_strategy == strategy]
 
 
+# Environment settings that allow overriding top-level options via env vars
+class DataLoaderEnvSettings(BaseSettings):
+    """Configuration loaded from environment variables."""
+
+    raw_data_path: Optional[str] = None
+    processed_data_path: Optional[str] = None
+    checkpoint_path: Optional[str] = None
+    file_tracker_table: Optional[str] = None
+    file_tracker_database: Optional[str] = None
+    max_parallel_jobs: Optional[int] = None
+    retry_attempts: Optional[int] = None
+    timeout_minutes: Optional[int] = None
+    log_level: Optional[str] = None
+    enable_metrics: Optional[bool] = None
+
+    model_config = SettingsConfigDict(
+        env_prefix="DATALOADER_",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+
 # Example configuration
 EXAMPLE_CONFIG = {
     "raw_data_path": "/mnt/raw/",
@@ -130,13 +152,38 @@ EXAMPLE_CONFIG = {
 
 
 def load_config_from_file(path: str) -> DataLoaderConfig:
-    """Load a :class:`DataLoaderConfig` from a JSON or YAML file."""
+    """Load a :class:`DataLoaderConfig` from a YAML file."""
     file_path = Path(path)
+    if file_path.suffix.lower() not in {".yml", ".yaml"}:
+        raise ValueError("Configuration files must be YAML")
+
+    if yaml is None:  # pragma: no cover - dependency optional
+        raise ImportError("pyyaml is required to load YAML configuration files")
+
     with open(file_path, "r", encoding="utf-8") as fh:
-        if file_path.suffix.lower() in {".yml", ".yaml"}:
-            if yaml is None:
-                raise ImportError("pyyaml is required to load YAML configuration files")
-            data = yaml.safe_load(fh)
-        else:
-            data = json.load(fh)
+        data = yaml.safe_load(fh)
+
     return DataLoaderConfig(**data)
+
+
+def load_runtime_config(
+    config_file: Optional[str] = None,
+    overrides: Optional[Dict[str, Any]] = None,
+) -> DataLoaderConfig:
+    """Load configuration from YAML, environment variables, and overrides."""
+
+    base_data: Dict[str, Any] = {}
+
+    if config_file:
+        base_cfg = load_config_from_file(config_file)
+        base_data.update(base_cfg.model_dump())
+
+    env_data = DataLoaderEnvSettings().model_dump(exclude_none=True)
+    base_data.update(env_data)
+
+    if overrides:
+        for key, value in overrides.items():
+            if key in DataLoaderConfig.model_fields and value is not None:
+                base_data[key] = value
+
+    return DataLoaderConfig(**base_data)

@@ -36,20 +36,20 @@ workflow using a small demo.
 pip install -e .
 
 # Run with configuration file
-python -m data_loader.main run --config config.json
+python -m data_loader.main run --config config.yaml
 ```
 
 ### 🆕 Cluster Mode (Recommended for Databricks)
 
 ```bash
 # Run with cluster-specific optimizations
-python -m data_loader.main run-cluster --config config.json
+python -m data_loader.main run-cluster --config config.yaml
 
 # Run with Unity Catalog
-python -m data_loader.main run-cluster --config config.json --unity-catalog
+python -m data_loader.main run-cluster --config config.yaml --unity-catalog
 
 # Check cluster status
-python -m data_loader.main cluster-status --config config.json
+python -m data_loader.main cluster-status --config config.yaml
 ```
 
 ## Architecture
@@ -92,7 +92,7 @@ poetry shell
 
 ## Configuration
 
-The data loader uses JSON configuration files to define tables, loading strategies, and processing options.
+The data loader uses YAML configuration files to define tables, loading strategies, and processing options.
 
 You can load a configuration file programmatically using
 `load_config_from_file`:
@@ -100,46 +100,45 @@ You can load a configuration file programmatically using
 ```python
 from data_loader.config import load_config_from_file
 
-config = load_config_from_file("path/to/config.json")
+config = load_config_from_file("path/to/config.yaml")
 ```
 
 ### Example Configuration
 
-```json
-{
-  "raw_data_path": "/mnt/raw/",
-  "processed_data_path": "/mnt/processed/",
-  "checkpoint_path": "/mnt/checkpoints/",
-  "file_tracker_table": "file_processing_tracker",
-  "file_tracker_database": "metadata",
-  "max_parallel_jobs": 4,
-  "retry_attempts": 3,
-  "timeout_minutes": 60,
-  "log_level": "INFO",
-  "enable_metrics": true,
-  "tables": [
-    {
-      "table_name": "customers",
-      "database_name": "analytics",
-      "source_path_pattern": "/mnt/raw/customers/*.parquet",
-      "loading_strategy": "scd2",
-      "primary_keys": ["customer_id"],
-      "tracking_columns": ["name", "email", "address"],
-      "file_format": "parquet",
-      "schema_evolution": true,
-      "partition_columns": ["date_partition"]
-    },
-    {
-      "table_name": "transactions",
-      "database_name": "analytics",
-      "source_path_pattern": "/mnt/raw/transactions/*.parquet",
-      "loading_strategy": "append",
-      "file_format": "parquet",
-      "schema_evolution": true,
-      "partition_columns": ["transaction_date"]
-    }
-  ]
-}
+```yaml
+raw_data_path: /mnt/raw/
+processed_data_path: /mnt/processed/
+checkpoint_path: /mnt/checkpoints/
+file_tracker_table: file_processing_tracker
+file_tracker_database: metadata
+max_parallel_jobs: 4
+retry_attempts: 3
+timeout_minutes: 60
+log_level: INFO
+enable_metrics: true
+tables:
+  - table_name: customers
+    database_name: analytics
+    source_path_pattern: /mnt/raw/customers/*.parquet
+    loading_strategy: scd2
+    primary_keys:
+      - customer_id
+    tracking_columns:
+      - name
+      - email
+      - address
+    file_format: parquet
+    schema_evolution: true
+    partition_columns:
+      - date_partition
+  - table_name: transactions
+    database_name: analytics
+    source_path_pattern: /mnt/raw/transactions/*.parquet
+    loading_strategy: append
+    file_format: parquet
+    schema_evolution: true
+    partition_columns:
+      - transaction_date
 ```
 
 ### Configuration Options
@@ -175,47 +174,47 @@ config = load_config_from_file("path/to/config.json")
 #### Standard Data Loading
 ```bash
 # Run with configuration file
-python -m data_loader.main run --config config.json
+python -m data_loader.main run --config config.yaml
 
-# Run with inline JSON configuration
-python -m data_loader.main run --config-json '{"raw_data_path": "/mnt/raw/", ...}'
+# Run with inline YAML configuration
+python -m data_loader.main run --config-json 'raw_data_path: /mnt/raw/\n...'
 
 # Run specific tables only
-python -m data_loader.main run --config config.json --tables "customers,transactions"
+python -m data_loader.main run --config config.yaml --tables "customers,transactions"
 
 # Dry run to see what would be processed
-python -m data_loader.main run --config config.json --dry-run
+python -m data_loader.main run --config config.yaml --dry-run
 
 # Run with optimization and vacuum
-python -m data_loader.main run --config config.json --optimize --vacuum
+python -m data_loader.main run --config config.yaml --optimize --vacuum
 ```
 
 #### 🆕 Cluster Mode (Enhanced for Databricks)
 ```bash
 # Run with cluster optimizations (recommended)
-python -m data_loader.main run-cluster --config config.json
+python -m data_loader.main run-cluster --config config.yaml
 
 # Run with Unity Catalog support
-python -m data_loader.main run-cluster --config config.json --unity-catalog
+python -m data_loader.main run-cluster --config config.yaml --unity-catalog
 
 # Run with resource monitoring
-python -m data_loader.main run-cluster --config config.json --monitoring
+python -m data_loader.main run-cluster --config config.yaml --monitoring
 
 # Dry run with cluster status
-python -m data_loader.main run-cluster --config config.json --dry-run
+python -m data_loader.main run-cluster --config config.yaml --dry-run
 
 # Check cluster configuration and health
-python -m data_loader.main cluster-status --config config.json
+python -m data_loader.main cluster-status --config config.yaml
 ```
 
 #### Check Processing Status
 ```bash
-python -m data_loader.main status --config config.json
+python -m data_loader.main status --config config.yaml
 ```
 
 #### Create Example Configuration
 ```bash
-python -m data_loader.main create-example-config --output my_config.json
+python -m data_loader.main create-example-config --output my_config.yaml
 ```
 
 ### Databricks Job Setup
@@ -226,7 +225,7 @@ python -m data_loader.main create-example-config --output my_config.json
    - **Cluster**: Use a cluster with Databricks Runtime 11.0+ and Delta Lake support
    - **Task Type**: Python script
    - **Script path**: Path to `main.py` in your uploaded package
-   - **Parameters**: `["run", "--config", "/path/to/config.json"]`
+   - **Parameters**: `["run", "--config", "/path/to/config.yaml"]`
 
 #### 🆕 Cluster Mode (Recommended)
 1. **Upload the package** to Databricks workspace or DBFS
@@ -234,7 +233,7 @@ python -m data_loader.main create-example-config --output my_config.json
    - **Cluster**: Use a cluster with Databricks Runtime 11.0+ and Delta Lake support
    - **Task Type**: Python script
    - **Script path**: Path to `main.py` in your uploaded package
-   - **Parameters**: `["run-cluster", "--config", "/path/to/config.json", "--unity-catalog"]`
+   - **Parameters**: `["run-cluster", "--config", "/path/to/config.yaml", "--unity-catalog"]`
 
 3. **Set up file trigger** (if using file-based triggers):
    - Configure the job to trigger on file arrival in your raw data location
@@ -520,7 +519,7 @@ pytest data_loader/tests/test_basic.py
 ### Debug Mode
 Enable debug logging for detailed execution information:
 ```bash
-python -m data_loader.main run --config config.json --log-level DEBUG
+python -m data_loader.main run --config config.yaml --log-level DEBUG
 ```
 
 
