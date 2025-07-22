@@ -12,7 +12,7 @@ import json
 
 try:
     import yaml
-except Exception:  # pragma: no cover - optional dependency
+except ImportError:  # pragma: no cover - optional dependency
     yaml = None
 
 
