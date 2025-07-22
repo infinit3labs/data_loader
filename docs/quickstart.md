@@ -19,5 +19,5 @@ poetry run pytest
 poetry run python demo/run_demo.py
 ```
 
-The demo uses `demo/demo_config.json` to showcase the configuration driven
+The demo uses `demo/demo_config.yaml` to showcase the configuration driven
 workflow. Edit this file to experiment with different settings.

@@ -20,8 +20,8 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - Spark not avail
     SparkSession = None
     DBUtils = None
 
-from .config.table_config import DataLoaderConfig
-from .main import load_configuration, print_processing_summary
+from .config.table_config import DataLoaderConfig, load_runtime_config
+from .main import print_processing_summary
 from .utils.logger import setup_logging
 
 
@@ -70,7 +70,13 @@ def run_job() -> Dict[str, Any]:
     if not config_file:
         raise ValueError("Configuration file must be provided via widget or env var")
 
-    config: DataLoaderConfig = load_configuration(config_file=config_file)
+    override_fields = {
+        k: v for k, v in job_params.items() if k in DataLoaderConfig.model_fields
+    }
+
+    config: DataLoaderConfig = load_runtime_config(
+        config_file=config_file, overrides=override_fields
+    )
     from .core.processor import DataProcessor  # imported lazily
 
     processor = DataProcessor(config)

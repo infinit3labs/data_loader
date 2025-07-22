@@ -1,0 +1,33 @@
+raw_data_path: /mnt/raw/
+processed_data_path: /mnt/processed/
+checkpoint_path: /mnt/checkpoints/
+file_tracker_table: file_processing_tracker
+file_tracker_database: metadata
+max_parallel_jobs: 4
+retry_attempts: 3
+timeout_minutes: 60
+log_level: INFO
+enable_metrics: true
+tables:
+- table_name: customers
+  database_name: analytics
+  source_path_pattern: /mnt/raw/customers/*.parquet
+  loading_strategy: scd2
+  primary_keys:
+  - customer_id
+  tracking_columns:
+  - name
+  - email
+  - address
+  file_format: parquet
+  schema_evolution: true
+  partition_columns:
+  - date_partition
+- table_name: transactions
+  database_name: analytics
+  source_path_pattern: /mnt/raw/transactions/*.parquet
+  loading_strategy: append
+  file_format: parquet
+  schema_evolution: true
+  partition_columns:
+  - transaction_date
