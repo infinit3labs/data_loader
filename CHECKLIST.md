@@ -8,3 +8,4 @@
 - [ ] Converted configuration management to YAML and env vars
 - [ ] Updated documentation and examples
 - [ ] Added config merging demo script
+- [ ] Implemented pipeline state management and restart capability
