@@ -38,7 +38,7 @@ def _get_dbutils():
 
 def load_job_params(defaults: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """Load job parameters from widgets or environment variables."""
-    params = defaults.copy() if defaults else {}
+    params = defaults or {}
     dbutils = _get_dbutils()
 
     def _get_param(name: str, env_name: str, default: str | None = None) -> str | None:
