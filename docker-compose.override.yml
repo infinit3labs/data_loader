@@ -1,0 +1,66 @@
+# Docker Compose override for development environment
+# This file is automatically used by docker-compose and provides
+# development-specific configurations
+
+version: '3.8'
+
+services:
+  data-loader:
+    build:
+      dockerfile: Dockerfile.test  # Use test-optimized Dockerfile
+    environment:
+      - LOG_LEVEL=DEBUG
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - PYTHONPATH=/app
+    volumes:
+      # Mount source code for live development
+      - .:/app:cached
+      # Separate volume for better performance on macOS
+      - data-volume:/app/data:delegated
+    stdin_open: true
+    tty: true
+
+  test-runner:
+    build:
+      dockerfile: Dockerfile.test
+    environment:
+      - LOG_LEVEL=DEBUG
+      - COVERAGE_FILE=/app/test-results/.coverage
+    volumes:
+      - .:/app:cached
+      - test-results-volume:/app/test-results:delegated
+
+  data-generator:
+    build:
+      dockerfile: Dockerfile.test
+    environment:
+      - LOG_LEVEL=INFO
+    volumes:
+      - .:/app:cached
+      - data-volume:/app/data:delegated
+
+  integration-tests:
+    build:
+      dockerfile: Dockerfile.test
+    environment:
+      - LOG_LEVEL=INFO
+    volumes:
+      - .:/app:cached
+      - data-volume:/app/data:delegated
+      - test-results-volume:/app/test-results:delegated
+
+  jupyter:
+    build:
+      dockerfile: Dockerfile.test
+    environment:
+      - LOG_LEVEL=INFO
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - .:/app:cached
+      - data-volume:/app/data:delegated
+    # Jupyter configuration for development
+    command: >
+      sh -c "
+        pip3 install jupyterlab &&
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --LabApp.token=''
+      "

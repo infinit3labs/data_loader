@@ -2,9 +2,9 @@
 
 ## Project Architecture
 
-This is a Databricks-optimized data loading framework with dual execution modes:
-- **Standard Mode**: General-purpose data processing with configurable parallel execution
-- **Cluster Mode**: Databricks-optimized processing with environment detection and resource management
+This is a Databricks-optimized data loading framework with **dual execution modes**:
+- **Standard Mode**: General-purpose data processing with configurable parallel execution  
+- **Cluster Mode**: Databricks-optimized processing with automatic environment detection and resource management
 
 ### Core Components
 
@@ -18,23 +18,26 @@ data_loader/
 └── main.py         # Typer CLI with dual command structure
 ```
 
-**Key Pattern**: All components use dependency injection via config objects. The `DataLoaderConfig` flows through the entire system, with `ClusterConfig` extending it for Databricks environments.
+**Key Pattern**: All components use dependency injection via config objects. The `DataLoaderConfig` flows through the entire system, with `ClusterConfig.from_base_config()` extending it for Databricks environments. The cluster mode automatically detects Databricks runtime properties and optimizes accordingly.
 
 ## Configuration System
 
 Configuration is **the backbone** of this system. Everything is driven by JSON/Pydantic config:
 
-- **`DataLoaderConfig`**: Main config with paths, parallel settings, table definitions
-- **`TableConfig`**: Per-table strategy selection, SCD2 parameters, file patterns
-- **`ClusterConfig`**: Extends base config with Databricks environment detection
+- **`DataLoaderConfig`**: Main config with paths, parallel settings, table definitions (in `config/table_config.py`)
+- **`TableConfig`**: Per-table strategy selection, SCD2 parameters, file patterns  
+- **`ClusterConfig`**: Extends base config with Databricks environment detection via `DatabricksEnvironment.detect_environment()`
 
 ```python
 # Standard pattern for config loading
 config = DataLoaderConfig(**config_dict)
 table_config = config.get_table_config("table_name")
+
+# Cluster mode pattern - automatically detects environment
+cluster_config = ClusterConfig.from_base_config(base_config)
 ```
 
-**Critical**: All strategies validate their config requirements in `validate_config()`. SCD2 requires `primary_keys` and `tracking_columns`. Append strategy is more lenient.
+**Critical**: All strategies validate their config requirements in `validate_config()`. SCD2 requires `primary_keys` and `tracking_columns`. Append strategy is more lenient. Use `poetry run python -m data_loader.main create-example-config` to generate valid config templates.
 
 ## Entry Points & CLI Patterns
 
@@ -73,15 +76,20 @@ def _get_loading_strategy(self, table_config: TableConfig) -> BaseLoadingStrateg
 ## File Tracking System
 
 **Critical Component**: Delta table-based file tracking prevents duplicate processing:
-- Uses `file_tracker_table` in `file_tracker_database` 
+- Uses `file_tracker_table` in `file_tracker_database` (defaults: `file_processing_tracker` in `metadata`)
 - Tracks processing status: `pending`, `processing`, `completed`, `failed`
-- Thread-safe for parallel execution
+- Thread-safe for parallel execution via status updates in `FileTracker` class
 
 ```python
 # File discovery pattern - glob-based with status filtering
 files = glob.glob(table_config.source_path_pattern)
 unprocessed_files = file_tracker.get_unprocessed_files(files)
+
+# Status management is automatic but can be queried
+file_tracker.update_status(file_path, FileProcessingStatus.PROCESSING)
 ```
+
+**Key Insight**: File paths are stored with their full absolute paths as primary keys in the tracking table.
 
 ## Databricks Integration Patterns
 
@@ -94,25 +102,38 @@ unprocessed_files = file_tracker.get_unprocessed_files(files)
 
 ## Development Workflows
 
-### Testing
+### Poetry-Based Setup
 ```bash
-# Poetry-based development workflow
-poetry install
-poetry run pytest                    # All tests
-poetry run pytest data_loader/tests/test_basic.py  # Specific test
+# Essential Poetry workflow - project uses Poetry exclusively
+poetry install                      # Install all dependencies including dev
+poetry shell                        # Activate virtual environment  
+poetry run python -m data_loader.main create-example-config -o config.json
 ```
 
-**Test Pattern**: Uses `@pytest.fixture(autouse=True)` to mock Spark session in `test_basic.py` - essential for non-Databricks testing.
+### Testing
+```bash
+# Poetry-based testing workflow
+poetry run pytest                    # All tests
+poetry run pytest data_loader/tests/test_basic.py  # Specific test
+poetry run pytest -v --tb=short     # Verbose with short traceback
+```
+
+**Test Pattern**: Uses `@pytest.fixture(autouse=True)` to mock Spark session in `test_basic.py` - essential for non-Databricks testing. All tests mock `DatabricksConfig.spark` to avoid PySpark initialization.
 
 ### Running Locally
 ```bash
-# Demo workflow
+# Demo workflow (uses mock data)
 poetry run python demo/run_demo.py
-python -m data_loader.main create-example-config -o config.json
+
+# Direct CLI execution
+poetry run python -m data_loader.main run --config config.json --dry-run
+
+# Module execution (alternative)
+python -m data_loader.main run --config config.json
 ```
 
 ### Databricks Deployment
-Deploy as Databricks job with parameters: `["run-cluster", "--config", "/path/to/config.json"]`
+Deploy as Databricks job with parameters: `["run-cluster", "--config", "/dbfs/path/to/config.json", "--unity-catalog"]`
 
 ## Code Conventions
 
@@ -120,6 +141,8 @@ Deploy as Databricks job with parameters: `["run-cluster", "--config", "/path/to
 - **Error Handling**: File-level errors don't stop entire pipeline. Retry logic with exponential backoff
 - **Pydantic Models**: Heavy use of Pydantic for config validation with `Field()` descriptions
 - **Type Hints**: Comprehensive typing throughout, especially for config classes
+- **Mock Dependencies**: Always mock `databricks_config.spark` in tests using `@pytest.fixture(autouse=True)`
+- **Config Flow**: Pass config objects through dependency injection, never use globals
 
 ## Key Integration Points
 
@@ -133,3 +156,5 @@ Deploy as Databricks job with parameters: `["run-cluster", "--config", "/path/to
 2. **Strategy Pattern**: New loading strategies should inherit from `BaseLoadingStrategy`
 3. **Cluster Awareness**: Use `ClusterConfig.from_base_config()` for Databricks optimizations
 4. **Status Tracking**: Always update file tracker status for new processing paths
+5. **Testing**: Mock `databricks_config.spark` and use Poetry for all development tasks
+6. **CLI Commands**: Follow Typer patterns with proper option documentation and help text

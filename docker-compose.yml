@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # Main data loader service
+  data-loader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databricks-data-loader
+    volumes:
+      # Mount source code for development
+      - .:/app
+      # Persistent data storage
+      - data-volume:/app/data
+      - logs-volume:/app/logs
+      - test-results-volume:/app/test-results
+    environment:
+      - SPARK_MASTER=local[*]
+      - SPARK_APP_NAME=DataLoaderTest
+      - PYTHONPATH=/app
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - LOG_LEVEL=INFO
+    networks:
+      - data-loader-network
+    ports:
+      - "4040:4040"  # Spark UI
+      - "4041:4041"  # Secondary Spark UI
+    command: tail -f /dev/null  # Keep container running for interactive testing
+
+  # Test runner service - runs all tests
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data-loader-tests
+    volumes:
+      - .:/app
+      - test-results-volume:/app/test-results
+    environment:
+      - SPARK_MASTER=local[2]
+      - PYTHONPATH=/app
+      - LOG_LEVEL=DEBUG
+    networks:
+      - data-loader-network
+    depends_on:
+      - data-loader
+    command: >
+      sh -c "
+        echo 'Starting test suite...' &&
+        python3 -m pytest data_loader/tests/ -v --tb=short --junitxml=/app/test-results/junit.xml --cov=data_loader --cov-report=html:/app/test-results/coverage --cov-report=term-missing &&
+        echo 'Tests completed. Results saved to /app/test-results/'
+      "
+
+  # Mock data generator service
+  data-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data-generator
+    volumes:
+      - .:/app
+      - data-volume:/app/data
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - data-loader-network
+    command: python3 /app/docker/scripts/generate_mock_data.py
+
+  # Integration test runner
+  integration-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: integration-tests
+    volumes:
+      - .:/app
+      - data-volume:/app/data
+      - test-results-volume:/app/test-results
+    environment:
+      - SPARK_MASTER=local[*]
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+    networks:
+      - data-loader-network
+    depends_on:
+      - data-generator
+    command: python3 /app/docker/scripts/run_integration_tests.py
+
+  # Jupyter notebook for interactive testing and exploration
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data-loader-jupyter
+    volumes:
+      - .:/app
+      - data-volume:/app/data
+    ports:
+      - "8888:8888"
+    environment:
+      - PYTHONPATH=/app
+      - SPARK_MASTER=local[*]
+    networks:
+      - data-loader-network
+    command: >
+      sh -c "
+        pip3 install jupyter &&
+        jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app
+      "
+
+volumes:
+  data-volume:
+    driver: local
+  logs-volume:
+    driver: local
+  test-results-volume:
+    driver: local
+
+networks:
+  data-loader-network:
+    driver: bridge

@@ -1,0 +1,49 @@
+{
+  "raw_data_path": "/app/data/raw",
+  "processed_data_path": "/app/data/processed",
+  "checkpoint_path": "/app/data/checkpoints",
+  "file_tracker_table": "cluster_test_file_tracker",
+  "file_tracker_database": "cluster_test_metadata",
+  "max_parallel_jobs": 4,
+  "retry_attempts": 3,
+  "timeout_minutes": 60,
+  "log_level": "INFO",
+  "enable_metrics": true,
+  "tables": [
+    {
+      "table_name": "customers",
+      "database_name": "cluster_test_analytics",
+      "source_path_pattern": "/app/data/raw/customers/*.parquet",
+      "loading_strategy": "scd2",
+      "primary_keys": [
+        "customer_id"
+      ],
+      "tracking_columns": [
+        "name",
+        "email",
+        "address",
+        "phone",
+        "customer_type"
+      ],
+      "file_format": "parquet",
+      "schema_evolution": true,
+      "partition_columns": [
+        "date_partition"
+      ],
+      "scd2_effective_date_column": "effective_date",
+      "scd2_end_date_column": "end_date",
+      "scd2_current_flag_column": "is_current"
+    },
+    {
+      "table_name": "transactions",
+      "database_name": "cluster_test_analytics",
+      "source_path_pattern": "/app/data/raw/transactions/*.parquet",
+      "loading_strategy": "append",
+      "file_format": "parquet",
+      "schema_evolution": true,
+      "partition_columns": [
+        "transaction_date"
+      ]
+    }
+  ]
+}

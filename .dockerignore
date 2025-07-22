@@ -1,0 +1,50 @@
+# Git and version control
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+
+# Development files
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+.mypy_cache/
+
+# Test outputs
+test-results/
+integration-test-results/
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Demo outputs (will be regenerated in container)
+demo/raw/
+demo/processed/
+demo/checkpoints/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# IDE specific
+.vscode/settings.json
+.idea/workspace.xml
