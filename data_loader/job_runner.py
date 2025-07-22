@@ -16,7 +16,7 @@ from loguru import logger
 try:
     from pyspark.sql import SparkSession
     from pyspark.dbutils import DBUtils
-except Exception:  # pragma: no cover - Spark not available in tests
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - Spark not available in tests
     SparkSession = None
     DBUtils = None
 
