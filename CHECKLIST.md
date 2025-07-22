@@ -9,3 +9,4 @@
 - [x] Updated documentation and examples
 - [x] Added config merging demo script
 - [x] Implemented pipeline state management and restart capability
+- [x] Added CLI command to reset pipeline state

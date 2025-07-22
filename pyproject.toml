@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-data-loader"
-version = "0.2.0"
+version = "0.2.1"
 description = "A parallel data loading module for Databricks with file monitoring and multiple loading strategies"
 authors = ["Infinit3Labs <contact@infinit3labs.com>"]
 readme = "README.md"

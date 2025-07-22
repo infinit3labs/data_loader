@@ -465,9 +465,42 @@ def create_example_config(
         
         print(f"Example configuration created: {output_file}")
         print("Edit this file to match your environment and table requirements.")
-        
+
     except Exception as e:
         logger.error(f"Failed to create example config: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def reset_state(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration YAML file",
+    ),
+    config_json: str = typer.Option(
+        None,
+        "--config-json",
+        help="Configuration as JSON string",
+    ),
+):
+    """Reset saved pipeline state using the provided configuration."""
+
+    setup_logging(log_level="INFO")
+
+    try:
+        config = load_configuration(config_file, config_json)
+        from data_loader.core.processor import DataProcessor
+
+        processor = DataProcessor(config)
+        processor.reset_pipeline_state()
+        print(
+            f"Pipeline state reset at {config.checkpoint_path}/{config.state_file}"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to reset state: {e}")
         raise typer.Exit(1)
 
 

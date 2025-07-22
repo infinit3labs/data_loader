@@ -21,6 +21,7 @@ for details on restarting interrupted runs.
 - **Error Handling**: Robust error handling with configurable retry logic
 - **Monitoring**: Comprehensive logging and metrics collection
 - **State Management**: Pipeline progress saved to disk for safe restarts
+- **Reset Command**: Easily clear saved state with `reset-state`
 - **Optimization**: Automatic table optimization and vacuum operations
 - **🆕 Cluster Mode**: Enhanced Databricks cluster integration with:
   - Automatic environment detection and optimization
@@ -68,6 +69,9 @@ poetry run python demo/config_merge_demo.py
 
 # Showcase pipeline state management
 poetry run python demo/state_management_demo.py
+
+# Reset pipeline state
+poetry run python demo/reset_state_demo.py
 
 # Full example usage script
 poetry run python example_usage.py
