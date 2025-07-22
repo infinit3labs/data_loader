@@ -43,8 +43,11 @@ class PipelineStateManager:
 
     def save_state(self) -> None:
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
-        with open(self.state_file, "w", encoding="utf-8") as fh:
-            json.dump(self.state, fh, indent=2)
+        try:
+            with open(self.state_file, "w", encoding="utf-8") as fh:
+                json.dump(self.state, fh, indent=2)
+        except (IOError, PermissionError, OSError) as e:
+            raise RuntimeError(f"Failed to save state to {self.state_file}: {e}") from e
 
     def get_table_status(self, table_name: str) -> PipelineStageStatus:
         entry = self.state.get("tables", {}).get(table_name)
