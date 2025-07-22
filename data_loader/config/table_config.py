@@ -155,7 +155,7 @@ def load_config_from_file(path: str) -> DataLoaderConfig:
     """Load a :class:`DataLoaderConfig` from a YAML file."""
     file_path = Path(path)
     if file_path.suffix.lower() not in {".yml", ".yaml"}:
-        raise ValueError("Configuration files must be YAML")
+        raise ValueError("Configuration files must be YAML format (.yml or .yaml extension)")
 
     if yaml is None:  # pragma: no cover - dependency optional
         raise ImportError("PyYAML is required to load YAML configuration files. Install it using: pip install pyyaml")
