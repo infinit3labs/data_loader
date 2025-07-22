@@ -34,24 +34,46 @@ for details on restarting interrupted runs.
 ### Standard Mode
 
 ```bash
-# Install the package
-pip install -e .
+# Install dependencies using Poetry
+poetry install
 
 # Run with configuration file
-python -m data_loader.main run --config config.yaml
+poetry run python -m data_loader.main run --config config.yaml
 ```
 
 ### 🆕 Cluster Mode (Recommended for Databricks)
 
 ```bash
 # Run with cluster-specific optimizations
-python -m data_loader.main run-cluster --config config.yaml
+poetry run python -m data_loader.main run-cluster --config config.yaml
 
 # Run with Unity Catalog
-python -m data_loader.main run-cluster --config config.yaml --unity-catalog
+poetry run python -m data_loader.main run-cluster --config config.yaml --unity-catalog
 
 # Check cluster status
-python -m data_loader.main cluster-status --config config.yaml
+poetry run python -m data_loader.main cluster-status --config config.yaml
+```
+
+## Examples
+
+Several example scripts are included in this repository. Execute them using
+`poetry run` to ensure all dependencies are loaded from the virtual environment.
+
+```bash
+# Basic configuration driven demo
+poetry run python demo/run_demo.py
+
+# Demonstrate configuration merging
+poetry run python demo/config_merge_demo.py
+
+# Showcase pipeline state management
+poetry run python demo/state_management_demo.py
+
+# Full example usage script
+poetry run python example_usage.py
+
+# Cluster mode demonstration
+poetry run python cluster_demo.py
 ```
 
 ## Architecture
@@ -485,22 +507,22 @@ The data loader provides robust error handling:
 Run the test suite:
 ```bash
 # Run all tests
-pytest data_loader/tests/
+poetry run pytest data_loader/tests/
 
 # Run with coverage
-pytest --cov=data_loader data_loader/tests/
+poetry run pytest --cov=data_loader data_loader/tests/
 
 # Run specific test file
-pytest data_loader/tests/test_basic.py
+poetry run pytest data_loader/tests/test_basic.py
 ```
 
 ## Development
 
 ### Setting up Development Environment
 1. Clone the repository
-2. Install in development mode: `pip install -e .`
-3. Install development dependencies: `pip install -r requirements.txt`
-4. Run tests to verify setup: `pytest`
+2. Install dependencies with Poetry: `poetry install`
+3. Activate the environment: `poetry shell` (optional)
+4. Run tests to verify setup: `poetry run pytest`
 
 ### Adding New Loading Strategies
 1. Create a new strategy class inheriting from `BaseLoadingStrategy`
