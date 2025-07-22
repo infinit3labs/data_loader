@@ -29,8 +29,15 @@ class PipelineStateManager:
 
     def _load_state(self) -> None:
         if self.state_file.exists():
-            with open(self.state_file, "r", encoding="utf-8") as fh:
-                self.state = json.load(fh)
+            try:
+                with open(self.state_file, "r", encoding="utf-8") as fh:
+                    self.state = json.load(fh)
+            except (IOError, PermissionError) as e:
+                print(f"Error reading state file {self.state_file}: {e}")
+                self.state = {"tables": {}}
+            except json.JSONDecodeError as e:
+                print(f"Invalid JSON in state file {self.state_file}: {e}")
+                self.state = {"tables": {}}
         else:
             self.state = {"tables": {}}
 
