@@ -158,7 +158,7 @@ def load_config_from_file(path: str) -> DataLoaderConfig:
         raise ValueError("Configuration files must be YAML")
 
     if yaml is None:  # pragma: no cover - dependency optional
-        raise ImportError("pyyaml is required to load YAML configuration files")
+        raise ImportError("PyYAML is required to load YAML configuration files. Install it using: pip install pyyaml")
 
     with open(file_path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
