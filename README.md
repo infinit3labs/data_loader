@@ -327,7 +327,13 @@ Enable debug logging for detailed execution information:
 python -m data_loader.main run --config config.json --log-level DEBUG
 ```
 
+
+## Databricks Job Execution
+For running the loader as a Databricks job, use the `data_loader.job_runner` module. Configure widgets `config`, `log_level`, `optimize` and `vacuum` or set the environment variables `DATALOADER_CONFIG_FILE` etc. See `docs/databricks_job.md` for details.
+
 ## Contributing
+
+
 
 1. Fork the repository
 2. Create a feature branch
