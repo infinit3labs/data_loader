@@ -12,12 +12,27 @@ poetry install
 poetry run pytest
 ```
 
-## Running the demo
+## Running the demos
+
+Execute the example scripts using `poetry run` so they use the
+project's virtual environment.
 
 ```bash
-# Execute the demo script
+# Basic configuration demo
 poetry run python demo/run_demo.py
+
+# Configuration merging
+poetry run python demo/config_merge_demo.py
+
+# Pipeline state management
+poetry run python demo/state_management_demo.py
+
+# Full usage example
+poetry run python example_usage.py
+
+# Cluster mode demonstration
+poetry run python cluster_demo.py
 ```
 
-The demo uses `demo/demo_config.yaml` to showcase the configuration driven
-workflow. Edit this file to experiment with different settings.
+The `demo/demo_config.yaml` file is used by the demos and can be modified to
+experiment with different settings.

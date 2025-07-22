@@ -22,5 +22,5 @@ Locally the job can be executed by setting environment variables:
 
 ```bash
 export DATALOADER_CONFIG_FILE=./config.yaml
-python -m data_loader.job_runner
+poetry run python -m data_loader.job_runner
 ```
