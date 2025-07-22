@@ -11,6 +11,7 @@ from data_loader.config.table_config import (
 from data_loader.strategies.base_strategy import BaseLoadingStrategy
 from data_loader.strategies.append_strategy import AppendStrategy
 from data_loader.strategies.scd2_strategy import SCD2Strategy
+from data_loader.config.databricks_config import databricks_config
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +79,8 @@ class TestTableConfig:
 class TestAppendStrategy:
     """Test append loading strategy."""
     
-    def test_strategy_creation(self):
+    @patch.object(databricks_config, "_create_spark_session", return_value=Mock())
+    def test_strategy_creation(self, _mock_spark):
         """Test append strategy creation."""
         table_config = TableConfig(
             table_name="test_table",
@@ -91,7 +93,8 @@ class TestAppendStrategy:
         assert strategy.table_config == table_config
         assert strategy.full_table_name == "test_db.test_table"
     
-    def test_config_validation(self):
+    @patch.object(databricks_config, "_create_spark_session", return_value=Mock())
+    def test_config_validation(self, _mock_spark):
         """Test configuration validation."""
         table_config = TableConfig(
             table_name="test_table",
@@ -118,7 +121,8 @@ class TestAppendStrategy:
 class TestSCD2Strategy:
     """Test SCD2 loading strategy."""
     
-    def test_strategy_creation(self):
+    @patch.object(databricks_config, "_create_spark_session", return_value=Mock())
+    def test_strategy_creation(self, _mock_spark):
         """Test SCD2 strategy creation with valid configuration."""
         table_config = TableConfig(
             table_name="test_table",
@@ -133,7 +137,8 @@ class TestSCD2Strategy:
         assert strategy.table_config == table_config
         assert strategy.full_table_name == "test_db.test_table"
     
-    def test_config_validation_success(self):
+    @patch.object(databricks_config, "_create_spark_session", return_value=Mock())
+    def test_config_validation_success(self, _mock_spark):
         """Test successful SCD2 configuration validation."""
         table_config = TableConfig(
             table_name="test_table",
@@ -150,7 +155,8 @@ class TestSCD2Strategy:
         strategy = SCD2Strategy(table_config)
         assert strategy.validate_config() is True
     
-    def test_config_validation_failure(self):
+    @patch.object(databricks_config, "_create_spark_session", return_value=Mock())
+    def test_config_validation_failure(self, _mock_spark):
         """Test SCD2 configuration validation failures."""
         # Missing primary keys
         with pytest.raises(ValueError):
