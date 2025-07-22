@@ -45,7 +45,7 @@ def load_job_params(defaults: Dict[str, Any] | None = None) -> Dict[str, Any]:
         if dbutils:
             try:
                 return dbutils.widgets.get(name)
-            except Exception:
+            except (KeyError, AttributeError):
                 pass
         return os.getenv(env_name, default)
 
