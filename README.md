@@ -4,7 +4,8 @@ A comprehensive data loading module for Databricks that provides parallel file p
 
 New users should start with the [Quickstart guide](docs/quickstart.md) which
 explains installation using **Poetry** and demonstrates the configuration
-workflow using a small demo.
+workflow using a small demo. See [Pipeline State Management](docs/pipeline_state.md)
+for details on restarting interrupted runs.
 
 ## Features
 
@@ -19,6 +20,7 @@ workflow using a small demo.
 - **Schema Evolution**: Automatic schema evolution support
 - **Error Handling**: Robust error handling with configurable retry logic
 - **Monitoring**: Comprehensive logging and metrics collection
+- **State Management**: Pipeline progress saved to disk for safe restarts
 - **Optimization**: Automatic table optimization and vacuum operations
 - **🆕 Cluster Mode**: Enhanced Databricks cluster integration with:
   - Automatic environment detection and optimization
