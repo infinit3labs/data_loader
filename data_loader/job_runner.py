@@ -32,7 +32,7 @@ def _get_dbutils():
     try:
         spark = SparkSession.builder.getOrCreate()
         return DBUtils(spark)
-    except Exception:
+    except (ImportError, RuntimeError):
         return None
 
 
