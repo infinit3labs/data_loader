@@ -554,15 +554,19 @@ python -m data_loader.main run --config config.yaml --log-level DEBUG
 ## Databricks Job Execution
 For running the loader as a Databricks job, use the `data_loader.job_runner` module. Configure widgets `config`, `log_level`, `optimize` and `vacuum` or set the environment variables `DATALOADER_CONFIG_FILE` etc. See `docs/databricks_job.md` for details.
 
+## Future Development
+
+See [ROADMAP.md](ROADMAP.md) for detailed development plans, upcoming features, and long-term vision for the Databricks Data Loader framework.
+
 ## Contributing
-
-
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with tests
 4. Run the test suite
 5. Submit a pull request
+
+For major features, please refer to the [roadmap](ROADMAP.md) to ensure alignment with project direction.
 
 ## License
 
