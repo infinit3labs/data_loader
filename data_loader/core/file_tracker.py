@@ -164,14 +164,15 @@ class FileTracker:
         return [row.file_path for row in result.collect()]
     
     def update_file_status(self, file_path: str, status: FileProcessingStatus,
-                          error_message: Optional[str] = None):
+                          error_message: Optional[str] = None, transaction_id: Optional[str] = None):
         """
-        Update the processing status of a file.
+        Update the processing status of a file atomically.
         
         Args:
             file_path: Path of the file to update
             status: New processing status
             error_message: Error message if status is FAILED
+            transaction_id: Optional transaction ID for correlation
         """
         current_time = datetime.now()
         
@@ -189,27 +190,43 @@ class FileTracker:
         if error_message:
             update_values["error_message"] = error_message
         
-        if status == FileProcessingStatus.FAILED:
-            # Increment retry count
-            self.spark.sql(f"""
-            UPDATE {self.full_table_name}
-            SET retry_count = retry_count + 1
-            WHERE file_path = '{file_path}'
-            """)
-        
-        # Build update SQL
-        set_clause = ", ".join([f"{k} = '{v}'" if isinstance(v, str) 
-                               else f"{k} = TIMESTAMP '{v}'" if isinstance(v, datetime)
-                               else f"{k} = {v}" for k, v in update_values.items()])
-        
-        update_sql = f"""
-        UPDATE {self.full_table_name}
-        SET {set_clause}
-        WHERE file_path = '{file_path}'
-        """
-        
-        self.spark.sql(update_sql)
-        logger.debug(f"Updated file status: {file_path} -> {status.value}")
+        # Use transaction for atomic updates
+        try:
+            if status == FileProcessingStatus.FAILED:
+                # Increment retry count and update status in single transaction
+                update_sql = f"""
+                UPDATE {self.full_table_name}
+                SET 
+                    retry_count = retry_count + 1,
+                    status = '{status.value}',
+                    processing_end_time = TIMESTAMP '{current_time}',
+                    error_message = {f"'{error_message}'" if error_message else "NULL"},
+                    updated_at = TIMESTAMP '{current_time}'
+                WHERE file_path = '{file_path}'
+                """
+            else:
+                # Build update SQL for other statuses
+                set_clause = ", ".join([f"{k} = '{v}'" if isinstance(v, str) 
+                                       else f"{k} = TIMESTAMP '{v}'" if isinstance(v, datetime)
+                                       else f"{k} = {v}" for k, v in update_values.items()])
+                
+                update_sql = f"""
+                UPDATE {self.full_table_name}
+                SET {set_clause}
+                WHERE file_path = '{file_path}'
+                """
+            
+            self.spark.sql(update_sql)
+            
+            # Log the status update
+            log_msg = f"Updated file status: {file_path} -> {status.value}"
+            if transaction_id:
+                log_msg += f" (txn: {transaction_id})"
+            logger.debug(log_msg)
+            
+        except Exception as e:
+            logger.error(f"Failed to update file status for {file_path}: {e}")
+            raise
     
     def get_failed_files(self, max_retries: int = 3) -> List[str]:
         """
@@ -302,3 +319,159 @@ class FileTracker:
         except Exception as e:
             logger.warning(f"Could not get metadata for file {file_path}: {e}")
             return None, None
+    
+    def validate_consistency(self, table_name: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Validate consistency between file tracker and actual data state.
+        
+        Args:
+            table_name: Specific table to validate (optional)
+            
+        Returns:
+            Dictionary with validation results
+        """
+        logger.info("Starting file tracker consistency validation")
+        
+        validation_results = {
+            "overall_status": "valid",
+            "total_files_checked": 0,
+            "inconsistencies": [],
+            "warnings": [],
+            "table_results": {}
+        }
+        
+        try:
+            # Get all completed files
+            query = f"""
+            SELECT file_path, table_name, status, processing_end_time
+            FROM {self.full_table_name}
+            WHERE status = '{FileProcessingStatus.COMPLETED.value}'
+            """
+            
+            if table_name:
+                query += f" AND table_name = '{table_name}'"
+            
+            completed_files = self.spark.sql(query).collect()
+            validation_results["total_files_checked"] = len(completed_files)
+            
+            for row in completed_files:
+                file_path = row.file_path
+                table_name = row.table_name
+                
+                # Check if file still exists
+                try:
+                    # In production, this would check DBFS/cloud storage
+                    file_exists = True  # Placeholder
+                except:
+                    file_exists = False
+                
+                if not file_exists:
+                    validation_results["warnings"].append(
+                        f"Completed file no longer exists: {file_path}"
+                    )
+                
+                # Track table-level results
+                if table_name not in validation_results["table_results"]:
+                    validation_results["table_results"][table_name] = {
+                        "files_checked": 0,
+                        "inconsistencies": 0
+                    }
+                
+                validation_results["table_results"][table_name]["files_checked"] += 1
+            
+            # Check for orphaned processing records
+            orphaned_processing = self.spark.sql(f"""
+            SELECT file_path, processing_start_time
+            FROM {self.full_table_name}
+            WHERE status = '{FileProcessingStatus.PROCESSING.value}'
+            AND processing_start_time < CURRENT_TIMESTAMP() - INTERVAL 2 HOURS
+            """).collect()
+            
+            for row in orphaned_processing:
+                validation_results["inconsistencies"].append(
+                    f"Orphaned processing record: {row.file_path} (started {row.processing_start_time})"
+                )
+                validation_results["overall_status"] = "inconsistent"
+            
+            logger.info(f"Consistency validation completed: {validation_results['overall_status']}")
+            return validation_results
+            
+        except Exception as e:
+            logger.error(f"Error during consistency validation: {e}")
+            validation_results["overall_status"] = "error"
+            validation_results["error"] = str(e)
+            return validation_results
+    
+    def fix_inconsistencies(self, validation_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fix identified inconsistencies in file tracking.
+        
+        Args:
+            validation_results: Results from validate_consistency()
+            
+        Returns:
+            Dictionary with fix results
+        """
+        logger.info("Starting inconsistency fixes")
+        
+        fix_results = {
+            "fixes_applied": 0,
+            "fixes_failed": 0,
+            "actions": []
+        }
+        
+        try:
+            # Fix orphaned processing records
+            orphaned_count = self.spark.sql(f"""
+            UPDATE {self.full_table_name}
+            SET 
+                status = '{FileProcessingStatus.FAILED.value}',
+                error_message = 'Orphaned processing record - marked as failed for retry',
+                processing_end_time = CURRENT_TIMESTAMP(),
+                updated_at = CURRENT_TIMESTAMP()
+            WHERE status = '{FileProcessingStatus.PROCESSING.value}'
+            AND processing_start_time < CURRENT_TIMESTAMP() - INTERVAL 2 HOURS
+            """)
+            
+            if orphaned_count > 0:
+                fix_results["fixes_applied"] += orphaned_count
+                fix_results["actions"].append(f"Fixed {orphaned_count} orphaned processing records")
+            
+            logger.info(f"Applied {fix_results['fixes_applied']} consistency fixes")
+            return fix_results
+            
+        except Exception as e:
+            logger.error(f"Error fixing inconsistencies: {e}")
+            fix_results["fixes_failed"] += 1
+            fix_results["error"] = str(e)
+            return fix_results
+    
+    def get_unprocessed_files(self, discovered_files: List[str]) -> List[str]:
+        """
+        Get files from discovered list that haven't been successfully processed.
+        
+        Args:
+            discovered_files: List of discovered file paths
+            
+        Returns:
+            List of file paths that need processing
+        """
+        if not discovered_files:
+            return []
+        
+        # Get files that are either not tracked or not completed
+        file_paths_str = "', '".join(discovered_files)
+        query = f"""
+        SELECT file_path 
+        FROM {self.full_table_name}
+        WHERE file_path IN ('{file_paths_str}')
+        AND status = '{FileProcessingStatus.COMPLETED.value}'
+        """
+        
+        completed_files = {row.file_path for row in self.spark.sql(query).collect()}
+        
+        # Return files that are not completed
+        unprocessed_files = [f for f in discovered_files if f not in completed_files]
+        
+        logger.debug(f"Found {len(unprocessed_files)} unprocessed files out of {len(discovered_files)} discovered")
+        return unprocessed_files
