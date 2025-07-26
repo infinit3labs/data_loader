@@ -100,7 +100,7 @@ class SCD2Strategy(BaseLoadingStrategy):
         source_df = self.apply_transformations(source_df)
         
         # Add SCD2 metadata columns to source data
-        source_df_with_scd2 = self._add_scd2_columns(source_df)
+        source_df_with_scd2 = self._add_scd2_columns(source_df, file_path)
         
         # Check if target table exists
         table_exists = self.spark.catalog.tableExists(self.full_table_name)
@@ -124,12 +124,13 @@ class SCD2Strategy(BaseLoadingStrategy):
         logger.info(f"Completed SCD2 load for {self.full_table_name}: {result}")
         return result
     
-    def _add_scd2_columns(self, df: DataFrame) -> DataFrame:
+    def _add_scd2_columns(self, df: DataFrame, file_path: str = None) -> DataFrame:
         """
         Add SCD2 metadata columns to the DataFrame.
         
         Args:
             df: Input DataFrame
+            file_path: Source file path for audit tracking
             
         Returns:
             DataFrame with SCD2 columns added
@@ -140,6 +141,12 @@ class SCD2Strategy(BaseLoadingStrategy):
             .withColumn(self.table_config.scd2_effective_date_column, current_time) \
             .withColumn(self.table_config.scd2_end_date_column, lit(None).cast(TimestampType())) \
             .withColumn(self.table_config.scd2_current_flag_column, lit(True))
+        
+        # Add audit columns for tracking and idempotency
+        if file_path:
+            df_with_scd2 = df_with_scd2 \
+                .withColumn("_source_file", lit(file_path)) \
+                .withColumn("_load_timestamp", current_time)
         
         return df_with_scd2
     
@@ -379,3 +386,124 @@ class SCD2Strategy(BaseLoadingStrategy):
         count = updated_source_records_df.count()
         logger.info(f"Updated {count} changed records using SCD2")
         return count
+    
+    def is_idempotent_load(self, source_df: DataFrame, file_path: str) -> bool:
+        """
+        Check if loading this data would be idempotent for SCD2.
+        
+        For SCD2, this is more complex as we need to check if the same
+        changes would result in the same final state.
+        
+        Args:
+            source_df: Source DataFrame to load
+            file_path: Path of the source file
+            
+        Returns:
+            True if load operation is idempotent, False otherwise
+        """
+        try:
+            # Check if table exists
+            if not self.spark.catalog.tableExists(self.full_table_name):
+                return True  # First load is always idempotent
+            
+            # For SCD2, we need to check if applying the same changes
+            # would result in the same state. This is complex but we can
+            # implement some basic checks.
+            
+            # Check if we have audit columns to track source files
+            try:
+                table_df = self.spark.table(self.full_table_name)
+                table_columns = table_df.columns
+                
+                # If we have source file tracking, check for duplicates
+                if "_source_file" in table_columns:
+                    # Count records from this file
+                    existing_count = self.spark.sql(f"""
+                    SELECT COUNT(*) as count 
+                    FROM {self.full_table_name} 
+                    WHERE _source_file = '{file_path}'
+                    """).collect()[0].count
+                    
+                    if existing_count > 0:
+                        logger.warning(f"SCD2: File {file_path} appears to have already been processed")
+                        return False
+                
+                # Additional SCD2-specific checks could be added here
+                # For example, checking if the same primary key changes 
+                # have already been applied
+                
+            except Exception as e:
+                logger.debug(f"Could not check SCD2 idempotency: {e}")
+            
+            return True  # Default to safe
+            
+        except Exception as e:
+            logger.warning(f"Error checking SCD2 idempotency: {e}")
+            return False
+    
+    def cleanup_failed_load(self, file_path: str) -> bool:
+        """
+        Clean up any partial data from a failed SCD2 load operation.
+        
+        This is more complex for SCD2 as we may need to:
+        1. Remove newly inserted records
+        2. Restore end dates that were modified
+        3. Restore current flags that were changed
+        
+        Args:
+            file_path: Path of the file that failed to load
+            
+        Returns:
+            True if cleanup successful, False otherwise
+        """
+        try:
+            if not self.spark.catalog.tableExists(self.full_table_name):
+                return True  # No table to clean up
+            
+            table_df = self.spark.table(self.full_table_name)
+            
+            # Check if we have audit columns to identify the failed load
+            if "_source_file" in table_df.columns:
+                logger.info(f"Cleaning up SCD2 records from failed load of {file_path}")
+                
+                # Get count before cleanup
+                initial_count = self._get_table_row_count()
+                
+                # For SCD2 cleanup, we need to be more careful:
+                # 1. Remove records that were inserted from this file
+                # 2. Potentially restore records that were end-dated
+                
+                # First, remove newly inserted records from this file
+                self.spark.sql(f"""
+                DELETE FROM {self.full_table_name}
+                WHERE _source_file = '{file_path}'
+                """)
+                
+                # TODO: More sophisticated cleanup could restore end-dated records
+                # This would require additional tracking of what was modified
+                
+                final_count = self._get_table_row_count()
+                deleted_count = initial_count - final_count
+                
+                if deleted_count > 0:
+                    logger.info(f"SCD2 cleanup: Removed {deleted_count} records from failed load")
+                
+                return True
+            else:
+                logger.warning(f"Cannot clean up SCD2 failed load - no audit columns in {self.full_table_name}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up SCD2 failed load for {file_path}: {e}")
+            return False
+    
+    def _get_table_row_count(self) -> int:
+        """Get current row count of the target table."""
+        try:
+            if self.spark.catalog.tableExists(self.full_table_name):
+                return self.spark.sql(f"SELECT COUNT(*) as count FROM {self.full_table_name}").collect()[0].count
+            else:
+                return 0
+        except Exception as e:
+            logger.warning(f"Could not get row count for {self.full_table_name}: {e}")
+            return 0

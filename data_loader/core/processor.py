@@ -2,11 +2,12 @@
 Main data processor orchestrating the entire data loading pipeline.
 
 This module coordinates file discovery, processing strategy selection,
-parallel execution, and status tracking.
+parallel execution, and status tracking with full idempotency support.
 """
 
 import glob
 import time
+import uuid
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from loguru import logger
@@ -15,6 +16,7 @@ from ..config.table_config import DataLoaderConfig, TableConfig, LoadingStrategy
 from ..config.databricks_config import databricks_config
 from ..core.file_tracker import FileTracker, FileProcessingStatus
 from ..core.parallel_executor import ParallelExecutor, ProcessingTask, ProcessingResult
+from ..core.pipeline_lock import PipelineLock, PipelineLockError
 from ..strategies.base_strategy import BaseLoadingStrategy
 from ..core.state_manager import PipelineStateManager, PipelineStageStatus
 from ..strategies.scd2_strategy import SCD2Strategy
@@ -60,24 +62,59 @@ class DataProcessor:
             config.state_file,
         )
 
+        # Pipeline lock for preventing concurrent runs
+        self.pipeline_lock = PipelineLock(
+            lock_dir=config.checkpoint_path,
+            lock_name="data_loader_pipeline",
+            timeout_minutes=config.timeout_minutes + 30  # Slightly longer than processing timeout
+        )
+
         # Cache for loading strategies
         self._strategy_cache: Dict[str, BaseLoadingStrategy] = {}
 
+        # Generate unique execution ID for this run
+        self.execution_id = str(uuid.uuid4())[:8]
+
         logger.info(
-            f"Initialized DataProcessor with {len(config.tables)} table configurations"
+            f"Initialized DataProcessor with {len(config.tables)} table configurations (execution: {self.execution_id})"
         )
 
-    def process_all_tables(self) -> Dict[str, Any]:
+    def process_all_tables(self, use_lock: bool = True) -> Dict[str, Any]:
         """
         Process all configured tables by discovering and loading new files.
+        
+        Args:
+            use_lock: Whether to use pipeline lock (default True)
 
         Returns:
             Dictionary with overall processing results and metrics
         """
-        logger.info("Starting data processing for all configured tables")
+        if use_lock:
+            # Check if another pipeline is already running
+            if self.pipeline_lock.is_locked():
+                lock_info = self.pipeline_lock.get_lock_info()
+                raise PipelineLockError(f"Pipeline already running (PID: {lock_info.get('pid')}, started: {lock_info.get('acquired_at')})")
+            
+            # Acquire lock for this execution
+            if not self.pipeline_lock.acquire(wait=False):
+                raise PipelineLockError("Failed to acquire pipeline lock")
+            
+            logger.info(f"Pipeline lock acquired for execution {self.execution_id}")
+        
+        try:
+            return self._process_all_tables_impl()
+        finally:
+            if use_lock and self.pipeline_lock._acquired:
+                self.pipeline_lock.release()
+                logger.info(f"Pipeline lock released for execution {self.execution_id}")
+    
+    def _process_all_tables_impl(self) -> Dict[str, Any]:
+        """Internal implementation of process_all_tables."""
+        logger.info(f"Starting data processing for all configured tables (execution: {self.execution_id})")
         start_time = time.time()
 
         overall_results = {
+            "execution_id": self.execution_id,
             "processing_start_time": start_time,
             "tables_processed": 0,
             "total_files_discovered": 0,
@@ -86,9 +123,22 @@ class DataProcessor:
             "failed_files": 0,
             "table_results": {},
             "errors": [],
+            "consistency_check": None
         }
 
         try:
+            # Validate file tracker consistency before processing
+            consistency_results = self.file_tracker.validate_consistency()
+            overall_results["consistency_check"] = consistency_results
+            
+            if consistency_results["overall_status"] == "inconsistent":
+                logger.warning("File tracker inconsistencies detected - attempting to fix")
+                fix_results = self.file_tracker.fix_inconsistencies(consistency_results)
+                overall_results["consistency_fixes"] = fix_results
+                
+                if fix_results.get("fixes_applied", 0) > 0:
+                    logger.info(f"Applied {fix_results['fixes_applied']} consistency fixes")
+
             # Process each table configuration
             for table_config in self.config.tables:
                 table_status = self.state_manager.get_table_status(
@@ -126,7 +176,7 @@ class DataProcessor:
                     self.state_manager.update_table_status(
                         table_config.table_name,
                         PipelineStageStatus.COMPLETED,
-                        {"summary": table_result},
+                        {"summary": table_result, "execution_id": self.execution_id},
                     )
 
                 except Exception as e:
@@ -142,7 +192,7 @@ class DataProcessor:
                     self.state_manager.update_table_status(
                         table_config.table_name,
                         PipelineStageStatus.FAILED,
-                        {"error": error_msg},
+                        {"error": error_msg, "execution_id": self.execution_id},
                     )
 
             # Handle retries for failed files
@@ -160,7 +210,7 @@ class DataProcessor:
             overall_results["total_processing_time"] = time.time() - start_time
 
         logger.info(
-            f"Completed processing all tables in {overall_results['total_processing_time']:.2f}s"
+            f"Completed processing all tables in {overall_results['total_processing_time']:.2f}s (execution: {self.execution_id})"
         )
         return overall_results
 
@@ -194,13 +244,13 @@ class DataProcessor:
                 "processing_time": 0.0,
             }
 
-        # Register new files with file tracker
+        # Register new files with file tracker and get unprocessed files
         new_files_count = self.file_tracker.register_files(
             discovered_files, table_config.table_name
         )
 
-        # Get files pending processing
-        pending_files = self.file_tracker.get_pending_files(table_config.table_name)
+        # Get files that actually need processing (not already completed)
+        pending_files = self.file_tracker.get_unprocessed_files(discovered_files)
 
         if not pending_files:
             logger.info(
@@ -285,6 +335,7 @@ class DataProcessor:
             Processing result
         """
         start_time = time.time()
+        transaction_id = f"{self.execution_id}_{task.file_path.split('/')[-1]}_{int(start_time)}"
 
         try:
             # Get table configuration
@@ -300,6 +351,12 @@ class DataProcessor:
 
             # Read source data
             source_df = strategy.read_source_data(task.file_path)
+
+            # Check if load would be idempotent
+            if not strategy.is_idempotent_load(source_df, task.file_path):
+                logger.warning(f"Load operation for {task.file_path} is not idempotent - attempting cleanup")
+                if not strategy.cleanup_failed_load(task.file_path):
+                    raise ValueError(f"Cannot ensure idempotent load for {task.file_path}")
 
             # Load data using the strategy
             load_result = strategy.load_data(source_df, task.file_path)
@@ -317,6 +374,15 @@ class DataProcessor:
         except Exception as e:
             execution_time = time.time() - start_time
             error_msg = f"Error processing file {task.file_path}: {str(e)}"
+
+            # Attempt cleanup on failure
+            try:
+                table_config = self.config.get_table_config(task.table_name)
+                if table_config:
+                    strategy = self._get_loading_strategy(table_config)
+                    strategy.cleanup_failed_load(task.file_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Cleanup failed for {task.file_path}: {cleanup_error}")
 
             return ProcessingResult(
                 file_path=task.file_path,
@@ -495,3 +561,173 @@ class DataProcessor:
     def reset_pipeline_state(self) -> None:
         """Reset saved pipeline state."""
         self.state_manager.reset()
+    
+    def validate_pipeline_consistency(self) -> Dict[str, Any]:
+        """
+        Validate overall pipeline consistency.
+        
+        Returns:
+            Dictionary with validation results
+        """
+        logger.info("Starting pipeline consistency validation")
+        
+        validation_results = {
+            "overall_status": "valid",
+            "file_tracker_status": None,
+            "state_manager_status": None,
+            "table_consistency": {},
+            "recommendations": []
+        }
+        
+        try:
+            # Validate file tracker consistency
+            file_tracker_results = self.file_tracker.validate_consistency()
+            validation_results["file_tracker_status"] = file_tracker_results
+            
+            if file_tracker_results["overall_status"] != "valid":
+                validation_results["overall_status"] = "inconsistent"
+                validation_results["recommendations"].append(
+                    "Run fix-inconsistencies command to repair file tracker"
+                )
+            
+            # Validate each table's consistency
+            for table_config in self.config.tables:
+                table_name = table_config.table_name
+                table_validation = self._validate_table_consistency(table_config)
+                validation_results["table_consistency"][table_name] = table_validation
+                
+                if not table_validation["consistent"]:
+                    validation_results["overall_status"] = "inconsistent"
+            
+            logger.info(f"Pipeline consistency validation completed: {validation_results['overall_status']}")
+            return validation_results
+            
+        except Exception as e:
+            logger.error(f"Error during pipeline consistency validation: {e}")
+            validation_results["overall_status"] = "error"
+            validation_results["error"] = str(e)
+            return validation_results
+    
+    def _validate_table_consistency(self, table_config: TableConfig) -> Dict[str, Any]:
+        """Validate consistency for a specific table."""
+        table_validation = {
+            "consistent": True,
+            "issues": [],
+            "stats": {}
+        }
+        
+        try:
+            # Get file tracker stats for this table
+            tracker_stats = self.file_tracker.get_processing_stats(table_config.table_name)
+            table_validation["stats"]["file_tracker"] = tracker_stats
+            
+            # Get state manager status
+            table_status = self.state_manager.get_table_status(table_config.table_name)
+            table_validation["stats"]["state_manager_status"] = table_status.value
+            
+            # Check for inconsistencies
+            if table_status == PipelineStageStatus.COMPLETED and tracker_stats.get("failed", 0) > 0:
+                table_validation["consistent"] = False
+                table_validation["issues"].append(
+                    f"Table marked as completed but has {tracker_stats['failed']} failed files"
+                )
+            
+            if table_status == PipelineStageStatus.IN_PROGRESS:
+                # Check if there are any processing files that might be stuck
+                processing_count = tracker_stats.get("processing", 0)
+                if processing_count > 0:
+                    table_validation["issues"].append(
+                        f"Table has {processing_count} files in processing state - may be stuck"
+                    )
+            
+        except Exception as e:
+            table_validation["consistent"] = False
+            table_validation["issues"].append(f"Error validating table: {e}")
+        
+        return table_validation
+    
+    def fix_pipeline_inconsistencies(self, validation_results: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Fix identified pipeline inconsistencies.
+        
+        Args:
+            validation_results: Previous validation results (optional)
+            
+        Returns:
+            Dictionary with fix results
+        """
+        if not validation_results:
+            validation_results = self.validate_pipeline_consistency()
+        
+        fix_results = {
+            "fixes_applied": 0,
+            "fixes_failed": 0,
+            "actions": []
+        }
+        
+        try:
+            # Fix file tracker inconsistencies
+            if validation_results.get("file_tracker_status", {}).get("overall_status") == "inconsistent":
+                file_tracker_fixes = self.file_tracker.fix_inconsistencies(
+                    validation_results["file_tracker_status"]
+                )
+                fix_results["fixes_applied"] += file_tracker_fixes.get("fixes_applied", 0)
+                fix_results["fixes_failed"] += file_tracker_fixes.get("fixes_failed", 0)
+                fix_results["actions"].extend(file_tracker_fixes.get("actions", []))
+            
+            # Fix table-level inconsistencies
+            for table_name, table_validation in validation_results.get("table_consistency", {}).items():
+                if not table_validation["consistent"]:
+                    table_fixes = self._fix_table_inconsistencies(table_name, table_validation)
+                    fix_results["fixes_applied"] += table_fixes.get("fixes_applied", 0)
+                    fix_results["fixes_failed"] += table_fixes.get("fixes_failed", 0)
+                    fix_results["actions"].extend(table_fixes.get("actions", []))
+            
+            logger.info(f"Applied {fix_results['fixes_applied']} pipeline consistency fixes")
+            return fix_results
+            
+        except Exception as e:
+            logger.error(f"Error fixing pipeline inconsistencies: {e}")
+            fix_results["fixes_failed"] += 1
+            fix_results["error"] = str(e)
+            return fix_results
+    
+    def _fix_table_inconsistencies(self, table_name: str, table_validation: Dict[str, Any]) -> Dict[str, Any]:
+        """Fix inconsistencies for a specific table."""
+        table_fixes = {
+            "fixes_applied": 0,
+            "fixes_failed": 0,
+            "actions": []
+        }
+        
+        try:
+            # Reset table status if it's marked completed but has failures
+            for issue in table_validation.get("issues", []):
+                if "marked as completed but has" in issue and "failed files" in issue:
+                    self.state_manager.update_table_status(
+                        table_name, 
+                        PipelineStageStatus.FAILED,
+                        {"reason": "Reset due to failed files", "auto_fix": True}
+                    )
+                    table_fixes["fixes_applied"] += 1
+                    table_fixes["actions"].append(f"Reset {table_name} status from completed to failed")
+                    break
+        
+        except Exception as e:
+            table_fixes["fixes_failed"] += 1
+            table_fixes["error"] = str(e)
+        
+        return table_fixes
+    
+    def force_unlock_pipeline(self) -> bool:
+        """
+        Force release the pipeline lock (use with caution).
+        
+        Returns:
+            True if lock released, False otherwise
+        """
+        try:
+            return self.pipeline_lock.force_release()
+        except Exception as e:
+            logger.error(f"Error force unlocking pipeline: {e}")
+            return False

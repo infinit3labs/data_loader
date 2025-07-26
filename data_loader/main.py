@@ -504,6 +504,206 @@ def reset_state(
         raise typer.Exit(1)
 
 
+@app.command()
+def validate_consistency(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration JSON file"
+    ),
+    config_json: str = typer.Option(
+        None,
+        "--config-json",
+        help="Configuration as JSON string"
+    ),
+    fix_issues: bool = typer.Option(
+        False,
+        "--fix/--no-fix",
+        help="Automatically fix detected inconsistencies"
+    )
+):
+    """Validate pipeline consistency and optionally fix issues."""
+    
+    setup_logging(log_level="INFO")
+    
+    try:
+        config = load_configuration(config_file, config_json)
+        from data_loader.core.processor import DataProcessor
+        
+        processor = DataProcessor(config)
+        
+        print("\n=== PIPELINE CONSISTENCY VALIDATION ===")
+        validation_results = processor.validate_pipeline_consistency()
+        
+        # Display results
+        print(f"Overall Status: {validation_results['overall_status'].upper()}")
+        
+        # File tracker results
+        if validation_results.get('file_tracker_status'):
+            tracker_status = validation_results['file_tracker_status']
+            print(f"\nFile Tracker Status: {tracker_status['overall_status']}")
+            print(f"Total Files Checked: {tracker_status['total_files_checked']}")
+            
+            if tracker_status.get('inconsistencies'):
+                print(f"Inconsistencies Found: {len(tracker_status['inconsistencies'])}")
+                for inconsistency in tracker_status['inconsistencies'][:5]:
+                    print(f"  - {inconsistency}")
+                if len(tracker_status['inconsistencies']) > 5:
+                    print(f"  ... and {len(tracker_status['inconsistencies']) - 5} more")
+        
+        # Table consistency results
+        table_consistency = validation_results.get('table_consistency', {})
+        print(f"\nTable Consistency:")
+        for table_name, table_validation in table_consistency.items():
+            status = "✓" if table_validation['consistent'] else "✗"
+            print(f"  {status} {table_name}")
+            if not table_validation['consistent']:
+                for issue in table_validation['issues']:
+                    print(f"    - {issue}")
+        
+        # Recommendations
+        if validation_results.get('recommendations'):
+            print(f"\nRecommendations:")
+            for rec in validation_results['recommendations']:
+                print(f"  - {rec}")
+        
+        # Auto-fix if requested
+        if fix_issues and validation_results['overall_status'] != 'valid':
+            print(f"\n=== APPLYING FIXES ===")
+            fix_results = processor.fix_pipeline_inconsistencies(validation_results)
+            
+            print(f"Fixes Applied: {fix_results['fixes_applied']}")
+            print(f"Fixes Failed: {fix_results['fixes_failed']}")
+            
+            if fix_results.get('actions'):
+                print("Actions taken:")
+                for action in fix_results['actions']:
+                    print(f"  - {action}")
+            
+            if fix_results.get('error'):
+                print(f"Error during fixes: {fix_results['error']}")
+        
+        # Exit with error code if inconsistencies found
+        if validation_results['overall_status'] != 'valid':
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        logger.error(f"Validation failed: {e}")
+        raise typer.Exit(1)
+
+
+@app.command() 
+def fix_inconsistencies(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration JSON file"
+    ),
+    config_json: str = typer.Option(
+        None,
+        "--config-json", 
+        help="Configuration as JSON string"
+    )
+):
+    """Fix detected pipeline inconsistencies."""
+    
+    setup_logging(log_level="INFO")
+    
+    try:
+        config = load_configuration(config_file, config_json)
+        from data_loader.core.processor import DataProcessor
+        
+        processor = DataProcessor(config)
+        
+        print("\n=== FIXING PIPELINE INCONSISTENCIES ===")
+        
+        # First validate to identify issues
+        validation_results = processor.validate_pipeline_consistency()
+        
+        if validation_results['overall_status'] == 'valid':
+            print("No inconsistencies detected - pipeline is healthy")
+            return
+        
+        # Apply fixes
+        fix_results = processor.fix_pipeline_inconsistencies(validation_results)
+        
+        print(f"Fixes Applied: {fix_results['fixes_applied']}")
+        print(f"Fixes Failed: {fix_results['fixes_failed']}")
+        
+        if fix_results.get('actions'):
+            print("\nActions taken:")
+            for action in fix_results['actions']:
+                print(f"  - {action}")
+        
+        if fix_results.get('error'):
+            print(f"\nError during fixes: {fix_results['error']}")
+            raise typer.Exit(1)
+        
+        # Validate again to confirm fixes
+        print(f"\n=== POST-FIX VALIDATION ===")
+        post_validation = processor.validate_pipeline_consistency()
+        print(f"Post-fix status: {post_validation['overall_status'].upper()}")
+        
+        if post_validation['overall_status'] != 'valid':
+            print("Warning: Some issues remain after fixes")
+            raise typer.Exit(1)
+        else:
+            print("✓ All inconsistencies resolved")
+            
+    except Exception as e:
+        logger.error(f"Fix operation failed: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def force_unlock(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration JSON file"
+    ),
+    config_json: str = typer.Option(
+        None,
+        "--config-json",
+        help="Configuration as JSON string"
+    )
+):
+    """Force release the pipeline lock (use with caution)."""
+    
+    setup_logging(log_level="INFO")
+    
+    try:
+        config = load_configuration(config_file, config_json)
+        from data_loader.core.processor import DataProcessor
+        
+        processor = DataProcessor(config)
+        
+        # Check current lock status
+        if processor.pipeline_lock.is_locked():
+            lock_info = processor.pipeline_lock.get_lock_info()
+            print(f"Current lock held by PID {lock_info.get('pid')} since {lock_info.get('acquired_at')}")
+            
+            confirm = typer.confirm("Are you sure you want to force release the lock?")
+            if not confirm:
+                print("Operation cancelled")
+                return
+            
+            if processor.force_unlock_pipeline():
+                print("✓ Pipeline lock force released")
+            else:
+                print("✗ Failed to force release lock")
+                raise typer.Exit(1)
+        else:
+            print("No pipeline lock currently held")
+            
+    except Exception as e:
+        logger.error(f"Force unlock failed: {e}")
+        raise typer.Exit(1)
+
+
 def load_configuration(config_file: Optional[str] = None,
                       config_json: Optional[str] = None) -> DataLoaderConfig:
     """
