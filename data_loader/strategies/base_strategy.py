@@ -56,6 +56,34 @@ class BaseLoadingStrategy(ABC):
         """
         pass
     
+    def is_idempotent_load(self, source_df: DataFrame, file_path: str) -> bool:
+        """
+        Check if loading this data would be idempotent (safe to retry).
+        
+        Args:
+            source_df: Source DataFrame to load
+            file_path: Path of the source file
+            
+        Returns:
+            True if load operation is idempotent, False otherwise
+        """
+        # Default implementation - subclasses should override for strategy-specific logic
+        return True
+    
+    def cleanup_failed_load(self, file_path: str) -> bool:
+        """
+        Clean up any partial data from a failed load operation.
+        
+        Args:
+            file_path: Path of the file that failed to load
+            
+        Returns:
+            True if cleanup successful, False otherwise
+        """
+        # Default implementation - subclasses should override if needed
+        logger.debug(f"No cleanup required for failed load: {file_path}")
+        return True
+    
     def prepare_target_table(self):
         """
         Prepare the target table (create if doesn't exist, ensure schema, etc.).

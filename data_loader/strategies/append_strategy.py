@@ -214,6 +214,97 @@ class AppendStrategy(BaseLoadingStrategy):
             "final_table_count": final_count
         }
     
+    def is_idempotent_load(self, source_df: DataFrame, file_path: str) -> bool:
+        """
+        Check if loading this data would be idempotent.
+        
+        For append strategy, this checks if the data has already been loaded.
+        
+        Args:
+            source_df: Source DataFrame to load  
+            file_path: Path of the source file
+            
+        Returns:
+            True if load operation is idempotent, False otherwise
+        """
+        try:
+            # Check if table exists
+            if not self.spark.catalog.tableExists(self.full_table_name):
+                return True  # First load is always idempotent
+            
+            # Check if we have a way to identify already-loaded data
+            source_file_column = "_source_file"
+            batch_id_column = "_batch_id"
+            
+            # Try to read table schema to see if we have audit columns
+            try:
+                table_df = self.spark.table(self.full_table_name)
+                table_columns = table_df.columns
+                
+                if source_file_column in table_columns:
+                    # Check if this file has already been loaded
+                    existing_count = self.spark.sql(f"""
+                    SELECT COUNT(*) as count 
+                    FROM {self.full_table_name} 
+                    WHERE {source_file_column} = '{file_path}'
+                    """).collect()[0].count
+                    
+                    if existing_count > 0:
+                        logger.warning(f"File {file_path} appears to have already been loaded ({existing_count} records)")
+                        return False  # Not idempotent - would create duplicates
+                
+            except Exception as e:
+                logger.debug(f"Could not check for existing data: {e}")
+            
+            return True  # Safe to load
+            
+        except Exception as e:
+            logger.warning(f"Error checking idempotency: {e}")
+            return False  # Err on the side of caution
+    
+    def cleanup_failed_load(self, file_path: str) -> bool:
+        """
+        Clean up any partial data from a failed load operation.
+        
+        For append strategy, this removes any records that might have been
+        partially loaded from the failed file.
+        
+        Args:
+            file_path: Path of the file that failed to load
+            
+        Returns:
+            True if cleanup successful, False otherwise
+        """
+        try:
+            if not self.spark.catalog.tableExists(self.full_table_name):
+                return True  # No table to clean up
+            
+            # Check if we have audit columns to identify the failed load
+            table_df = self.spark.table(self.full_table_name)
+            if "_source_file" in table_df.columns:
+                # Remove any records from this file (in case partial load occurred)
+                initial_count = self._get_table_row_count()
+                
+                self.spark.sql(f"""
+                DELETE FROM {self.full_table_name}
+                WHERE _source_file = '{file_path}'
+                """)
+                
+                final_count = self._get_table_row_count()
+                deleted_count = initial_count - final_count
+                
+                if deleted_count > 0:
+                    logger.info(f"Cleaned up {deleted_count} records from failed load of {file_path}")
+                
+                return True
+            else:
+                logger.warning(f"Cannot clean up failed load - no audit columns in {self.full_table_name}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up failed load for {file_path}: {e}")
+            return False
+    
     def _get_table_row_count(self) -> int:
         """
         Get the current row count of the target table.
@@ -229,8 +320,6 @@ class AppendStrategy(BaseLoadingStrategy):
         except Exception as e:
             logger.warning(f"Could not get row count for {self.full_table_name}: {e}")
             return 0
-    
-    def deduplicate_if_needed(self, df: DataFrame, dedup_columns: list = None) -> DataFrame:
         """
         Optionally deduplicate data before appending.
         
